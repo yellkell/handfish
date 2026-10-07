@@ -5,8 +5,9 @@
  *  THE SEQUENCE
  *   1. Catch it: the fish hangs off your rod tip (FishingSystem).
  *   2. Take it: grip it with your free hand — it unhooks and flops in your hand, full size.
- *   3. Press A (or X), or with bare hands BACKPACK on the palm menu (ui/PalmMenu.ts): the tray comes up in front of you at waist height, tipped toward you, the
- *      fish you already carry lying in their slots.
+ *   3. As it goes into your hand the tray comes up by itself (A or X, or BACKPACK on the bare
+ *      hands' palm menu, ui/PalmMenu.ts, brings it up or puts it away any time): in front of you at
+ *      waist height, tipped toward you, the fish you already carry lying in their slots.
  *   4. Bring the fish over the tray: it shrinks to slot size in your hand and a GHOST fish hovers
  *      in the slot it would drop into — green if it fits, red if it doesn't. Flick the stick to
  *      turn it a quarter.
