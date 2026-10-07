@@ -235,6 +235,8 @@ World.create(container, {
   const s = json.layout.start;
   world.player.position.set(s.x, surfaces.floorYAt(s.x, s.z, 10), s.z);
   world.player.rotation.set(0, s.yaw, 0);
+  // (and it's where RECENTRE takes you till the map's taken you somewhere)
+  locomotion.anchor = { x: s.x, z: s.z, yaw: s.yaw, y: world.player.position.y };
 
   // the fishing: Tidewater's rules and save, the rod in your hand, the wallet on your wrists
   const game = createGameState();
@@ -318,6 +320,15 @@ World.create(container, {
   backpackDeps.skelter = () => skelterView.gate;
   // no backpack up the helter skelter
   backpackDeps.blocked = () => skelterView.onTower;
+  // the backpack's RECENTRE: back on the spot the map put you on, facing the way it faced you
+  backpackDeps.recentre = () => {
+    if (travelMapDeps.blocked?.() || !locomotion.anchor) {
+      uiDeny();
+      return false;
+    }
+    blink.fire();
+    return teleportView.recentre?.() ?? false;
+  };
   // the chart's places: point at one in the field guide and you're there
   backpackDeps.travel = (p) => {
     const st = fishingView.state?.();

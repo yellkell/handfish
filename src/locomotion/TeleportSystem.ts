@@ -11,6 +11,10 @@
  *    origin in so you stay exactly where you stood (the recentre redefines your NEUTRAL, not your
  *    spot).
  *
+ * `locomotion.anchor` is the last spot a move put you on (the map's, the chart's, the stairs'), and
+ * `teleportView.recentre` puts you back on it, facing the way it faced you: the backpack's RECENTRE
+ * button, for when you've wandered off it in your room or turned round.
+ *
  * `locomotion.enabled` still says whether you may go anywhere (closed mid-fight, landing a fish,
  * the backpack open, up the helter skelter): the map asks it before it sends you.
  */
@@ -29,9 +33,11 @@ const _head = new Vector3();
 
 /**
  * Move the rig so the player's head lands over (x, z) at floor height `y`,
- * facing `yaw` (three.js convention: yaw 0 looks down −z).
+ * facing `yaw` (three.js convention: yaw 0 looks down −z). It becomes the spot RECENTRE puts you
+ * back on, unless `anchor` is false (a headset recentre re-planting you where you stood).
  */
-export function teleportPlayer(player: XROrigin, x: number, z: number, yaw: number, y = 0): void {
+export function teleportPlayer(player: XROrigin, x: number, z: number, yaw: number, y = 0, anchor = true): void {
+  if (anchor) locomotion.anchor = { x, z, yaw, y };
   player.head.getWorldPosition(_head);
   player.head.getWorldQuaternion(_quat);
   _dir.set(0, 0, -1).applyQuaternion(_quat);
@@ -75,10 +81,13 @@ export const locomotion: {
   surfaces: Surfaces | null;
   enabled: boolean;
   onTeleport: ((from: Vector3, to: Vector3) => void)[];
+  /** the last spot a move put your head on, and the way it faced you (RECENTRE's) */
+  anchor: { x: number; z: number; yaw: number; y: number } | null;
 } = {
   surfaces: null,
   enabled: true,
   onTeleport: [],
+  anchor: null,
 };
 
 /** Tell the listeners the head moved from `from` to wherever it is now. */
@@ -92,6 +101,8 @@ function moved(player: XROrigin, from: Vector3): void {
 export const teleportView: {
   snapTurn?: (dir: -1 | 1) => void;
   to?: (x: number, z: number, yaw: number) => void;
+  /** back onto the last spot you were put on, facing the way it faced you; false if there's none */
+  recentre?: () => boolean;
   /** go straight to (x, z) facing `yaw`, onto the floor there nearest `nearY` (the chart) */
   travel?: (x: number, z: number, yaw: number, nearY: number) => void;
 } = {};
@@ -127,6 +138,14 @@ export class TeleportSystem extends createSystem({}) {
       const s = locomotion.surfaces;
       teleportPlayer(this.player, x, z, yaw, s ? s.floorYAt(x, z, this.player.position.y) : 0);
     };
+    teleportView.recentre = () => {
+      const a = locomotion.anchor;
+      if (!a) return false;
+      const from = this.player.head.getWorldPosition(new Vector3());
+      teleportPlayer(this.player, a.x, a.z, a.yaw, a.y);
+      moved(this.player, from);
+      return true;
+    };
     teleportView.travel = (x, z, yaw, nearY) => {
       const s = locomotion.surfaces;
       const from = this.player.head.getWorldPosition(new Vector3());
@@ -143,7 +162,7 @@ export class TeleportSystem extends createSystem({}) {
     if (this.recentered) {
       this.recentered = false;
       const p = this.recenterPose;
-      teleportPlayer(this.player, p.x, p.z, p.yaw, p.y);
+      teleportPlayer(this.player, p.x, p.z, p.yaw, p.y, false);
     }
 
     if (!locomotion.enabled || introActive()) return;

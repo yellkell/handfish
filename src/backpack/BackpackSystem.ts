@@ -26,8 +26,9 @@
  *  market, a shop counter, Coral's hands. Hold the fish over one (tray open or not) and a ghost
  *  settles on it with what it's worth there; click to hand it over.
  *
- *  TABS: BACKPACK and FIELD GUIDE, stacked off the tray's left rim, above the MUSIC switch
- *  (point and click): out in the open, where no fish, wall or readout can cover them. The field guide
+ *  TABS: BACKPACK and FIELD GUIDE, stacked off the tray's left rim, above the MUSIC, ALWAYS DAY and
+ *  RECENTRE switches (point and click; RECENTRE puts you back on the spot the map last put you on,
+ *  facing the way it faced you, and shuts the backpack): out in the open, where no fish, wall or readout can cover them. The field guide
  *  (backpack/fieldGuide.ts) is a book of the island's fish that lies open in the tray in place
  *  of the slots, filling itself in as you catch each species.
  *
@@ -101,6 +102,8 @@ export const backpackDeps: {
   skelter?: (() => { at: [number, number]; face: [number, number] } | null) | null;
   /** the backpack stays shut (up the helter skelter) */
   blocked?: (() => boolean) | null;
+  /** RECENTRE: back on the spot the map put you on, facing the way it faced you; false if not now */
+  recentre?: (() => boolean) | null;
 } = { state: null, props: null, chart: null, where: null, walks: null, travel: null };
 
 /** Somewhere in the world that takes a fish from your hand (the fish market's scale, a counter...). */
@@ -236,6 +239,8 @@ export class BackpackSystem extends createSystem({}) {
   private musicButton!: InteractivePanel;
   /** ALWAYS DAY, under the music switch */
   private dayButton!: InteractivePanel;
+  /** RECENTRE, under that */
+  private recentreButton!: InteractivePanel;
   /** the logs you carry (woodworks/) and, once the pickaxe is yours, your gem pouch (mining/),
    *  off the tray's right rim */
   private stash!: Stash;
@@ -304,6 +309,17 @@ export class BackpackSystem extends createSystem({}) {
     this.paintDayButton();
     this.tray.group.add(this.dayButton.mesh);
     register(this.dayButton);
+    // and RECENTRE under that: back where the map put you, the backpack shut behind you
+    this.recentreButton = new InteractivePanel([320, 128], [0.17, 0.068]);
+    this.recentreButton.mesh.rotation.x = -Math.PI / 2;
+    this.recentreButton.paint = () => this.paintRecentreButton();
+    this.recentreButton.onClick = () => {
+      if (backpackDeps.recentre?.()) this.close();
+    };
+    this.recentreButton.repaintOnFonts(() => this.paintRecentreButton());
+    this.paintRecentreButton();
+    this.tray.group.add(this.recentreButton.mesh);
+    register(this.recentreButton);
     // the logs you carry and your gem pouch, off the right rim across from the tabs
     this.stash = new Stash(backpackDeps.state!, this.renderer);
     this.tray.group.add(this.stash.group);
@@ -554,6 +570,47 @@ export class BackpackSystem extends createSystem({}) {
     b.commit();
   }
 
+  private paintRecentreButton(): void {
+    const b = this.recentreButton;
+    const c = b.ctx;
+    const [W, H] = b.px;
+    b.clear();
+    b.buttons = [{ id: 'recentre', x: 0, y: 0, w: W, h: H }];
+    roundRect(c, 6, 6, W - 12, H - 12, 22);
+    c.fillStyle = b.hover ? '#7ff0e2' : INK.glass;
+    c.fill();
+    c.lineWidth = 5;
+    c.strokeStyle = b.hover ? '#06302a' : '#5ee8d8';
+    c.stroke();
+    const ink = b.hover ? '#06302a' : '#5ee8d8';
+    // a turning arrow, drawn (not a glyph: the headset's fonts may not have one)
+    const ax = 58;
+    const ay = H / 2;
+    const r = 20;
+    c.strokeStyle = ink;
+    c.lineWidth = 7;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.arc(ax, ay, r, -Math.PI * 0.35, Math.PI * 1.25);
+    c.stroke();
+    c.lineCap = 'butt';
+    const tip = -Math.PI * 0.35;
+    const tx = ax + Math.cos(tip) * r;
+    const ty = ay + Math.sin(tip) * r;
+    c.fillStyle = ink;
+    c.beginPath();
+    c.moveTo(tx + 13, ty - 4);
+    c.lineTo(tx - 5, ty - 13);
+    c.lineTo(tx - 2, ty + 9);
+    c.closePath();
+    c.fill();
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.font = font(700, 46);
+    c.fillText('RECENTRE', W / 2 + 34, H / 2 + 2, W - 120);
+    b.commit();
+  }
+
   private paintMusicButton(): void {
     const b = this.musicButton;
     const c = b.ctx;
@@ -633,6 +690,7 @@ export class BackpackSystem extends createSystem({}) {
     this.info.mesh.position.set(0, 0.075, -this.tray.height / 2 - 0.1);
     this.musicButton.mesh.position.set(-this.tray.width / 2 - 0.13, 0.012, this.tray.height / 2 - 0.08);
     this.dayButton.mesh.position.set(-this.tray.width / 2 - 0.13, 0.012, this.tray.height / 2 - 0.08 + 0.078);
+    this.recentreButton.mesh.position.set(-this.tray.width / 2 - 0.13, 0.012, this.tray.height / 2 - 0.08 + 0.156);
     this.stash.group.position.set(this.tray.width / 2 + 0.11, 0.012, -this.tray.height / 2 + 0.05);
     this.stash.update(0);
     this.tabs.mesh.position.set(-this.tray.width / 2 - 0.13, 0.012, -this.tray.height / 2 + 0.078);
