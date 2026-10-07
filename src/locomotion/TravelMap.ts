@@ -47,7 +47,7 @@ import { flame } from '../backpack/chart.ts';
 import { mapGo, mapRollUp, mapTab, mapUnroll, uiDeny, uiHover } from '../audio/sfx.ts';
 import { introActive } from '../experience/introGate.ts';
 import { pulseHand } from '../input/haptics.ts';
-import { joint, trackedHand } from '../input/hands.ts';
+import { hands } from '../input/hands.ts';
 import { font, onFontsReady } from '../ui/fonts.ts';
 import { InteractivePanel, pointerView, register } from '../ui/pointer.ts';
 import { turned } from '../village/craft.ts';
@@ -509,14 +509,16 @@ export class TravelMap extends createSystem({}) {
     }
   }
 
-  /** Is this hand a tracked hand (not a controller)? */
-  private isHand(h: Hand): XRInputSource | null {
-    return trackedHand(this, h);
+  /** Is this hand a tracked hand (not a controller), its joints read this frame? */
+  private isHand(h: Hand): boolean {
+    return hands[h].fresh;
   }
 
-  /** A tracked hand's joint, in the world. */
-  private joint(h: Hand, name: XRHandJoint, out: Vector3): Vector3 | null {
-    return joint(this, h, name, out);
+  /** A tracked hand's thumb or index tip, in the world (input/hands.ts). */
+  private joint(h: Hand, name: 'thumb-tip' | 'index-finger-tip', out: Vector3): Vector3 | null {
+    const s = hands[h];
+    if (!s.fresh) return null;
+    return out.copy(name === 'thumb-tip' ? s.thumbTip : s.indexTip);
   }
 
   /** Bare hands: pinch above your eyes and pull down, and the map comes down with your hand. */

@@ -45,7 +45,7 @@ import { backpackView } from '../backpack/BackpackSystem.ts';
 import { pointerView } from '../ui/pointer.ts';
 import { fill, GRID_SIZES, type Piece } from '../backpack/logic.ts';
 import { pulseHand } from '../input/haptics.ts';
-import { rodFrame, trackedHand } from '../input/hands.ts';
+import { rodFrame } from '../input/hands.ts';
 import { locomotion } from '../locomotion/TeleportSystem.ts';
 import { INK } from '../ui/panel.ts';
 import type { WristWallet } from '../ui/wallet.ts';
@@ -135,7 +135,7 @@ export const fishingDeps: {
 const hourNow = (): number => fishingDeps.hour?.() ?? FISHING.hour;
 
 /** Dev window (`__fish.fishing`). */
-export const fishingView: { state?: () => RodState; bite?: () => unknown; fight?: () => unknown; system?: FishingSystem } = {};
+export const fishingView: { state?: () => RodState; bite?: () => unknown; fight?: () => unknown; system?: FishingSystem; /** the hand the rod's in (or goes back to) */ hand?: () => 'left' | 'right' } = {};
 
 interface Bite {
   phase: 'wait' | 'nibble' | 'take';
@@ -309,6 +309,7 @@ export class FishingSystem extends createSystem({}) {
     fishingView.bite = () => this.bite;
     fishingView.fight = () => this.fight;
     fishingView.system = this;
+    fishingView.hand = () => this.hand;
     this.lastRig.copy(this.player.position);
   }
 
@@ -350,7 +351,7 @@ export class FishingSystem extends createSystem({}) {
    */
   private rodHands(dt: number): { grip: Object3D; ray: Object3D } {
     const h = this.hand;
-    if (!trackedHand(this, h) || !rodFrame(this, h, ROD_TILT, this.fistRaw.grip, this.fistRaw.ray)) {
+    if (!rodFrame(h, ROD_TILT, this.fistRaw.grip, this.fistRaw.ray)) {
       this.fistOn = false;
       return { grip: this.grip(h), ray: this.player.raySpaces[h] };
     }

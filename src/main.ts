@@ -10,7 +10,9 @@
 
 import { createSystem, launchXR, SessionMode, World } from '@iwsdk/core';
 import { Vector3, type Camera, type PerspectiveCamera } from 'three';
-import { Music } from './audio/music.ts';
+import { Music, musicView } from './audio/music.ts';
+import { HandSystem } from './input/HandSystem.ts';
+import { PalmMenu, palmMenuDeps } from './ui/PalmMenu.ts';
 import { ShoreSound } from './audio/shore.ts';
 import { ensureAudio, uiDeny } from './audio/sfx.ts';
 import { BackpackSystem, backpackDeps, backpackView } from './backpack/BackpackSystem.ts';
@@ -230,6 +232,8 @@ World.create(container, {
   locomotion.surfaces = surfaces;
   if (grass) grass.floorOver = (x, z, m) => surfaces.deckOver(x, z, m);
   world.registerSystem(TeleportSystem);
+  // bare hands, read once a frame before anything plays on them (input/hands.ts)
+  world.registerSystem(HandSystem);
   // Tidewater's start: the boardwalk up from the pier foot, looking down it (set now, so the
   // systems see you there through the rest of the build)
   const s = json.layout.start;
@@ -309,6 +313,29 @@ World.create(container, {
   // (and the map's one of them: pointing at it never casts)
   world.registerSystem(PointerSystem);
   world.registerSystem(TravelMap);
+  // bare hands' palm menu: the backpack, the map, recentre, the music (ui/PalmMenu.ts)
+  Object.assign(palmMenuDeps, {
+    rodHand: () => fishingView.hand?.() ?? 'right',
+    backpack: () => {
+      if (!backpackView.open && backpackDeps.blocked?.()) {
+        uiDeny();
+        return;
+      }
+      backpackView.toggle?.();
+    },
+    map: (from: Vector3) => {
+      const m = travelMapView.system;
+      if (!m) return;
+      if (travelMapView.open) m.closeMap();
+      else m.openMap(null, from);
+    },
+    recentre: () => backpackDeps.recentre?.() ?? false,
+    music: () => musicView.toggle(),
+    musicOn: () => !musicView.muted,
+    backpackOpen: () => backpackView.open,
+    mapOpen: () => travelMapView.open,
+  });
+  world.registerSystem(PalmMenu);
   world.registerSystem(FishingSystem);
   backpackDeps.state = game;
   backpackDeps.props = fishingDeps.props;
@@ -548,7 +575,8 @@ World.create(container, {
 
   progress(1);
   scene.visible = true;
-  status.textContent = navigator.xr ? 'Ready.' : 'WebXR not available in this browser: desktop preview only.';
+  // (the build, so a page the headset kept from before is easy to tell from a new one)
+  status.textContent = (navigator.xr ? 'Ready.' : 'WebXR not available in this browser: desktop preview only.') + `  ·  build ${__BUILD__}`;
   enter.disabled = !navigator.xr;
   enter.addEventListener('click', () => {
     ensureAudio();

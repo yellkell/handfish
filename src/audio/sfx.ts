@@ -484,3 +484,14 @@ export function mapTab(): void {
   whooshNoise(0.08, 0.08, 6200, 3600);
   clank(1700, 0.02, 0.03);
 }
+
+/** The palm menu (ui/PalmMenu.ts) opening off your palm: a soft rising pair of glassy notes. */
+export function palmOpen(): void {
+  tone({ freq: 880, to: 1320, type: 'sine', dur: 0.12, gain: 0.05 });
+  tone({ freq: 1760, type: 'sine', dur: 0.18, gain: 0.03, delay: 0.06 });
+}
+
+/** …and folding away: the same, falling. */
+export function palmClose(): void {
+  tone({ freq: 1320, to: 760, type: 'sine', dur: 0.12, gain: 0.04 });
+}
