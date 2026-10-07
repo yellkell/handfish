@@ -1,54 +1,31 @@
 /**
- * TeleportSystem — FIRE FIGHT 2's club movement (`src/rave/systems/
- * ClubTeleportSystem.ts`), carried over whole onto the island:
- * teleport-only, no sliding, no smooth turn.
+ * TeleportSystem — what's left of FIRE FIGHT 2's club movement now the island is travelled by the
+ * map alone (locomotion/TravelMap.ts: point at where you want to be, and you're there). There's
+ * no arc and no stepping; this keeps the moves underneath:
  *
- *  - Push either thumbstick FORWARD and that controller starts aiming: a
- *    ballistic arc curves from it to the ground, ending in an OCTAGON marker
- *    (ff2's platform footprint) with an arrow inside it.
- *  - Move the controller to move the landing spot; roll the thumbstick to
- *    spin the arrow — that's the way you'll be FACING when you arrive.
- *  - Let the stick spring back and you're there.
- *  - An isolated sideways flick (when not aiming) is a snap turn.
- *  - BACK on the stick is a short step backwards, on the spot — never an
- *    arc. Only a forward push can open the arc.
+ *  - `teleportPlayer` / `teleportView.travel`: put your head over a spot, on its floor, facing
+ *    where it says (the map's spots, the field guide's chart, the helter skelter's stairs).
+ *  - An isolated sideways flick of a thumbstick is a snap turn (ff2's 35°), for anyone playing
+ *    seated. (Forward on the stick is the map's now.)
+ *  - A headset RECENTRE (the reference space's `reset` event) is honoured: the rig folds the new
+ *    origin in so you stay exactly where you stood (the recentre redefines your NEUTRAL, not your
+ *    spot).
  *
- * Landing spots are the island's floor areas (world/surfaces.ts): the pier,
- * boardwalks, stairs, porches — each at its own height, and the rig lands at
- * it — plus dry, walkable ground (steeper going down a hill than up it).
- * Anywhere else (the sea, the swash, a cliff face) the marker burns
- * hazard-red and release does nothing. Arcs can't cut
- * through walls, rails or posts, until you're standing at or above their top.
- *
- * Active while `locomotion.enabled` (the game will close it while you're at
- * the helm or mid-fight). Unlike the club there's no "platform origin" to go
- * back to — the island IS the world — so closing it just drops the arc.
- *
- * A headset RECENTRE (the reference space's `reset` event) is honoured: the
- * rig folds the new origin in so you stay exactly where you stood (the
- * recentre redefines your NEUTRAL, not your spot).
+ * `locomotion.enabled` still says whether you may go anywhere (closed mid-fight, landing a fish,
+ * the backpack open, up the helter skelter): the map asks it before it sends you.
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
 import { Quaternion, Vector3 } from 'three';
-import { Line2 } from 'three/examples/jsm/lines/Line2.js';
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { XROrigin } from '@iwsdk/xr-input';
-import { GROUND, OCTAGON_VERTICES, TELEPORT, TELEPORT_COLOURS } from './config.ts';
-import { TeleportMarker } from './marker.ts';
+import { TELEPORT } from './config.ts';
 import * as sfx from '../audio/sfx.ts';
-import { simulateArc, type FloorArea, type Surfaces } from '../world/surfaces.ts';
+import type { Surfaces } from '../world/surfaces.ts';
 import { introActive } from '../experience/introGate.ts';
 
-const _origin = new Vector3();
 const _dir = new Vector3();
 const _quat = new Quaternion();
 const _head = new Vector3();
-const _up = new Vector3(0, 1, 0);
-const _n = new Vector3();
-const _tilt = new Quaternion();
-const _yawQ = new Quaternion();
 
 /**
  * Move the rig so the player's head lands over (x, z) at floor height `y`,
@@ -111,11 +88,8 @@ function moved(player: XROrigin, from: Vector3): void {
   for (const fn of locomotion.onTeleport) fn(from, to);
 }
 
-/** Dev window on the moves that resolve without an arc — no thumbstick
- *  exists off-device, so this is the only way to exercise them headlessly.
- *  (`__fish.move`.) */
+/** The moves, for the map and the chart to call, and the dev harness (`__fish.move`). */
 export const teleportView: {
-  stepBack?: () => void;
   snapTurn?: (dir: -1 | 1) => void;
   to?: (x: number, z: number, yaw: number) => void;
   /** go straight to (x, z) facing `yaw`, onto the floor there nearest `nearY` (the chart) */
@@ -123,16 +97,6 @@ export const teleportView: {
 } = {};
 
 export class TeleportSystem extends createSystem({}) {
-  private aimingHand: 'left' | 'right' | null = null;
-  private arc!: Line2;
-  private arcGeo!: LineGeometry;
-  private arcMat!: LineMaterial;
-  private arcBuf = new Array<number>(TELEPORT.arcPoints * 3).fill(0);
-  private marker!: TeleportMarker;
-  private landing = new Vector3();
-  private landingArea: FloorArea | null = null;
-  private landingYaw = 0;
-  private valid = false;
   /** Snap turn fires once per flick: armed again after the stick recentres. */
   private snapArmed = true;
   /** The reference space we're watching for `reset` (headset recentre). */
@@ -158,7 +122,6 @@ export class TeleportSystem extends createSystem({}) {
   };
 
   init(): void {
-    teleportView.stepBack = () => this.stepBack();
     teleportView.snapTurn = (dir) => snapTurn(this.player, dir > 0 ? -TELEPORT.snapAngle : TELEPORT.snapAngle);
     teleportView.to = (x, z, yaw) => {
       const s = locomotion.surfaces;
@@ -168,36 +131,12 @@ export class TeleportSystem extends createSystem({}) {
       const s = locomotion.surfaces;
       const from = this.player.head.getWorldPosition(new Vector3());
       teleportPlayer(this.player, x, z, yaw, s ? s.floorYAt(x, z, nearY) : 0);
-      sfx.uiClick();
       moved(this.player, from);
     };
-    // Arc line — a fat world-unit ribbon in galvanised steel (hazard-red
-    // when the landing is refused), LineBasicMaterial ignores width so Line2
-    // it is.
-    this.arcGeo = new LineGeometry();
-    this.arcGeo.setPositions(this.arcBuf);
-    this.arcMat = new LineMaterial({
-      color: TELEPORT_COLOURS.ok,
-      linewidth: 0.014,
-      worldUnits: true,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-    });
-    this.arc = new Line2(this.arcGeo, this.arcMat);
-    this.arc.frustumCulled = false;
-    this.arc.visible = false;
-    this.scene.add(this.arc);
-
-    // Octagon landing marker — the platform silhouette, drawn in light, with
-    // chevrons for the facing (see marker.ts).
-    this.marker = new TeleportMarker(OCTAGON_VERTICES, TELEPORT_COLOURS);
-    this.scene.add(this.marker.group);
   }
 
-  update(delta: number): void {
+  update(): void {
     this.watchRecenter();
-    this.marker.update(delta);
 
     // A recentre moved the reference-space origin under our feet: re-plant
     // the rig on the banked pose so you stay exactly where you stood.
@@ -207,111 +146,16 @@ export class TeleportSystem extends createSystem({}) {
       teleportPlayer(this.player, p.x, p.z, p.yaw, p.y);
     }
 
-    if (!locomotion.enabled || !locomotion.surfaces || introActive()) {
-      this.hide();
-      return;
-    }
-
-    // Not mid-aim? A sideways flick is a snap turn and a BACKWARD flick is a
-    // step back; only forward opens the teleport arc. (Sideways WHILE aiming
-    // steers the landing's facing instead — see traceArc.)
-    if (!this.aimingHand && this.tryFlick()) return;
-
-    let axes: { x: number; y: number } | null = null;
-    if (this.aimingHand) {
-      const a = this.input.xr.gamepads[this.aimingHand]?.getAxesValues(InputComponent.Thumbstick);
-      axes = a ?? null;
-    } else {
-      for (const hand of ['left', 'right'] as const) {
-        const a = this.input.xr.gamepads[hand]?.getAxesValues(InputComponent.Thumbstick);
-        // FORWARD opens the arc (−y is forward on a thumbstick); back is the
-        // step's, and sideways the snap turn's — neither ever throws a ray.
-        if (a && a.y <= -TELEPORT.engage && Math.abs(a.y) >= Math.abs(a.x)) {
-          this.aimingHand = hand;
-          axes = a;
-          break;
-        }
-      }
-    }
-
-    if (!this.aimingHand || !axes) {
-      this.hide();
-      return;
-    }
-
-    const mag = Math.hypot(axes.x, axes.y);
-    if (mag < TELEPORT.release) {
-      // Stick sprung back — go (if the marker was on valid ground).
-      if (this.valid) {
-        const from = this.player.head.getWorldPosition(new Vector3());
-        teleportPlayer(this.player, this.landing.x, this.landing.z, this.landingYaw, this.landingArea?.y ?? 0);
-        sfx.uiClick();
-        moved(this.player, from);
-      }
-      this.hide();
-      return;
-    }
-
-    this.traceArc(axes, locomotion.surfaces);
-  }
-
-  private traceArc(axes: { x: number; y: number }, surfaces: Surfaces): void {
-    const ray = this.player.raySpaces[this.aimingHand!];
-    ray.getWorldPosition(_origin);
-    ray.getWorldQuaternion(_quat);
-    _dir.set(0, 0, -1).applyQuaternion(_quat);
-
-    // Ballistic arc from the controller, landing where it meets the ground,
-    // the sea, or a raised floor area it falls onto from above.
-    const { landed, area, landing } = simulateArc(surfaces, _origin, _dir, this.arcBuf);
-    this.landing.set(landing.x, landing.y, landing.z);
-    this.landingArea = area;
-    this.arcGeo.setPositions(this.arcBuf);
-
-    // Valid only on a standable floor, with no wall between you and it. The
-    // hop is judged at the higher of the two ends: stepping UP onto the pier
-    // and stepping back DOWN off it are both hops made at deck height. (Hops
-    // down a hillside may land on steeper ground than hops up it.)
-    this.player.head.getWorldPosition(_head);
-    const fromY = surfaces.floorYAt(_head.x, _head.z, this.player.position.y);
-    const hopY = Math.max(fromY, this.landingArea?.y ?? 0);
-    this.valid =
-      landed &&
-      surfaces.standable(this.landingArea, this.landing.x, this.landing.z, fromY) &&
-      !surfaces.crossesWall(_head.x, _head.z, this.landing.x, this.landing.z, hopY);
-
-    // Facing: thumbstick angle relative to where the controller points.
-    const ctrlYaw = Math.atan2(-_dir.x, -_dir.z);
-    const stickAngle = Math.atan2(axes.x, -axes.y); // 0 = pushed forward
-    this.landingYaw = ctrlYaw - stickAngle;
-
-    this.arcMat.color.set(this.valid ? TELEPORT_COLOURS.ok : TELEPORT_COLOURS.refused);
-    const marker = this.marker.group;
-    marker.position.set(this.landing.x, this.landing.y + 0.012, this.landing.z);
-    // Club floors were all flat; natural ground isn't, so on it the puck
-    // lies along the slope instead of half-burying itself in it.
-    _yawQ.setFromAxisAngle(_up, this.landingYaw);
-    if (this.landingArea?.kind === 'ground') {
-      const n = surfaces.terrain.normalAt(this.landing.x, this.landing.z, _n);
-      _tilt.setFromUnitVectors(_up, _n.set(n.x, n.y, n.z));
-      marker.quaternion.multiplyQuaternions(_tilt, _yawQ);
-    } else {
-      marker.quaternion.copy(_yawQ);
-    }
-    this.marker.show(this.valid);
-    this.arc.visible = true;
+    if (!locomotion.enabled || introActive()) return;
+    this.trySnap();
   }
 
   /**
-   * The two flicks that resolve on the spot rather than opening an arc: a
-   * left/right push yaws the rig by snapAngle, a BACKWARD push shuffles you
-   * half a metre away from what you're looking at.
-   *
-   * One action per flick — the stick has to spring back below snapReset to
-   * re-arm — so holding it doesn't spin you or walk you across the island,
-   * and a diagonal can't fire both.
+   * A left/right flick yaws the rig by snapAngle. One turn per flick — the stick has to spring
+   * back below snapReset to re-arm — so holding it doesn't spin you, and a push that's more
+   * forward than sideways (the map's) never turns you.
    */
-  private tryFlick(): boolean {
+  private trySnap(): void {
     let sx = 0;
     let sy = 0;
     let mag = 0;
@@ -327,69 +171,15 @@ export class TeleportSystem extends createSystem({}) {
     }
     if (mag < TELEPORT.snapReset) {
       this.snapArmed = true;
-      return false;
+      return;
     }
-    if (!this.snapArmed) return false;
-    // A clear sideways flick past the threshold — turn the way it's pushed
-    // (stick right yaws you right: a NEGATIVE rotation about +y).
+    if (!this.snapArmed) return;
+    // (stick right yaws you right: a NEGATIVE rotation about +y)
     if (Math.abs(sx) >= TELEPORT.snapEngage && Math.abs(sx) > Math.abs(sy)) {
       this.snapArmed = false;
       snapTurn(this.player, sx > 0 ? -TELEPORT.snapAngle : TELEPORT.snapAngle);
       sfx.uiClick();
-      return true;
-    }
-    // …and a clear BACKWARD one steps back. (Forward is −y on a thumbstick,
-    // so back is positive.) It engages where the arc would — the same push
-    // that opens a ray forwards steps you backwards — and consumes the
-    // flick either way it lands: a push that finds a wall behind you must
-    // not fall through to anything else.
-    if (sy >= TELEPORT.engage && sy > Math.abs(sx)) {
-      this.snapArmed = false;
-      this.stepBack();
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Half a metre backwards, away from where the HEAD is looking — the body
-   * can be facing anywhere, but "back" means back from what you can see.
-   *
-   * Judged the way the arc's landing is judged — standable floor under it,
-   * no wall crossed on the way — plus one rule the arc doesn't need: it must
-   * stay on YOUR level. Half a step back off the pier rail must not drop you
-   * to the sand, and half a step back from a porch must not lift you onto
-   * it. Climbing is what the arc is for. (Decks keep the club's 5 cm; natural
-   * ground isn't flat, so it gets the slope's worth of a step.)
-   *
-   * Shorter steps are tried in turn so backing up against something stops you
-   * short instead of refusing outright.
-   */
-  private stepBack(): void {
-    const surfaces = locomotion.surfaces;
-    if (!surfaces) return;
-    this.player.head.getWorldPosition(_head);
-    this.player.head.getWorldQuaternion(_quat);
-    _dir.set(0, 0, -1).applyQuaternion(_quat);
-    const flat = Math.hypot(_dir.x, _dir.z);
-    if (flat < 1e-4) return; // staring at your boots or the sky
-    const bx = -_dir.x / flat;
-    const bz = -_dir.z / flat;
-    const from = surfaces.areaNear(_head.x, _head.z, this.player.position.y);
-    for (const step of TELEPORT.stepBack) {
-      const x = _head.x + bx * step;
-      const z = _head.z + bz * step;
-      const area = surfaces.areaNear(x, z, from.y);
-      if (!surfaces.standable(area, x, z)) continue;
-      const tolerance = from.kind === 'ground' && area.kind === 'ground' ? GROUND.groundLevelTolerance : 0.05;
-      if (Math.abs(area.y - from.y) > tolerance) continue; // your level, or nothing
-      if (surfaces.crossesWall(_head.x, _head.z, x, z, Math.max(from.y, area.y))) continue;
-      const was = this.player.head.getWorldPosition(new Vector3());
-      teleportPlayer(this.player, x, z, Math.atan2(-_dir.x, -_dir.z), area.y);
-      sfx.uiClick();
-      moved(this.player, was);
-      return;
-    }
+    } else if (Math.abs(sy) >= TELEPORT.snapEngage) this.snapArmed = false;
   }
 
   /**
@@ -402,12 +192,5 @@ export class TeleportSystem extends createSystem({}) {
     this.refSpace?.removeEventListener('reset', this.onRecenter);
     this.refSpace = space;
     space?.addEventListener('reset', this.onRecenter);
-  }
-
-  private hide(): void {
-    this.aimingHand = null;
-    this.valid = false;
-    this.arc.visible = false;
-    this.marker.hide();
   }
 }

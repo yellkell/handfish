@@ -1,8 +1,8 @@
 /**
  * FISH & CHIPS — How to Fish, in VR, on Tidewater's island.
  *
- * Boot: IWSDK world (VR, no built-in locomotion — movement is ff2's club
- * teleport, see locomotion/TeleportSystem.ts), then the baked island
+ * Boot: IWSDK world (VR, no built-in locomotion — you get about by pointing
+ * at the travel map, see locomotion/TravelMap.ts), then the baked island
  * streams in: sky, terrain, sea, village. The player starts where Tidewater
  * starts you — on the boardwalk above the pier, looking down it to the sea —
  * with a rod in hand (fishing/FishingSystem.ts) and a wallet on each wrist.
@@ -22,6 +22,8 @@ import { warmUp, warmUpNow } from './fx/warm.ts';
 import { WristWallet } from './ui/wallet.ts';
 import { WaterFx } from './fx/water.ts';
 import { locomotion, teleportView, TeleportSystem } from './locomotion/TeleportSystem.ts';
+import { TravelMap, travelMapDeps, travelMapView } from './locomotion/TravelMap.ts';
+import { CAMP_MAP } from './backpack/fieldGuide.ts';
 import { decodeTerrain, type BoxCollider, type WorldJson } from './world/data.ts';
 import { Heightfield } from './world/heightfield.ts';
 import { Ocean } from './world/ocean.ts';
@@ -273,12 +275,41 @@ World.create(container, {
   }
   await built(0.45);
   Object.assign(fishingDeps, { props, state: game, ocean, terrain: heightfield, surfaces, layout: json.layout, wallet, fx, night: sky.state.night });
+  backpackDeps.chart = { heightAt: (x, z) => heightfield.heightAt(x, z), layout: json.layout, buildings: frames };
+  // the travel map: the only way about the island (point at a spot on it and you're there)
+  Object.assign(travelMapDeps, {
+    world: { layout: json.layout, buildings: frames, heightAt: (x: number, z: number) => heightfield.heightAt(x, z), surfaces },
+    chart: backpackDeps.chart,
+    progress: () => ({
+      walks: woodView.walks?.() ?? {},
+      skelterGate: (woodView.walks?.().deep ?? 0) >= 1 ? (skelterView.gate ?? null) : null,
+      statue: game.journey.unveiled,
+      campsFound: new Set(Object.entries(game.camps).filter(([, c]) => c.found).map(([id]) => id)),
+      campMap: game.home.includes(CAMP_MAP),
+      pick: game.gems.pick,
+      rocksMined: new Set(Object.keys(game.gems.mined)),
+      rocksSeen: new Set<string>(),
+    }),
+    go: (spot: { x: number; z: number; y: number; face: [number, number] }) => {
+      blink.fire();
+      teleportView.travel?.(spot.x, spot.z, Math.atan2(-(spot.face[0] - spot.x), -(spot.face[1] - spot.z)), spot.y);
+    },
+    blocked: () => {
+      const st = fishingView.state?.();
+      if (st === 'fighting') return 'Land your fish first';
+      if (st === 'landing') return 'Put your catch away first';
+      if (skelterView.onTower) return 'Slide back down first';
+      return null;
+    },
+    busy: () => backpackView.open,
+  });
   // point-and-click panels first: a hand on a button claims its trigger before fishing sees it
+  // (and the map's one of them: pointing at it never casts)
   world.registerSystem(PointerSystem);
+  world.registerSystem(TravelMap);
   world.registerSystem(FishingSystem);
   backpackDeps.state = game;
   backpackDeps.props = fishingDeps.props;
-  backpackDeps.chart = { heightAt: (x, z) => heightfield.heightAt(x, z), layout: json.layout, buildings: frames };
   // (and the pawn shop's map of the camps draws the same island)
   campMapSource.chart = backpackDeps.chart;
   backpackDeps.where = () => world.camera.getWorldPosition(new Vector3());
@@ -492,8 +523,8 @@ World.create(container, {
     blink.update(dt);
   };
 
-  // Dev hook: drive the rig without a headset (`__fish.move.to(x, z, yaw)`).
-  (window as unknown as { __fish: unknown }).__fish = { world, surfaces, move: teleportView, json, game, fishing: fishingView, vegetation, backpack: backpackView, interiors, tables, music, shore, sky, clouds, hawks, homeShops, gearShops, rodRack, villa, fx, props: fishingDeps.props, wood: woodView, skelter: skelterView, camps: campView, mining: mineView, gemWindows, statue, spotFor };
+  // Dev hook: drive the rig without a headset (`__fish.move.to(x, z, yaw)`, `__fish.map.system.goTo(id)`).
+  (window as unknown as { __fish: unknown }).__fish = { world, surfaces, move: teleportView, map: travelMapView, json, game, fishing: fishingView, vegetation, backpack: backpackView, interiors, tables, music, shore, sky, clouds, hawks, homeShops, gearShops, rodRack, villa, fx, props: fishingDeps.props, wood: woodView, skelter: skelterView, camps: campView, mining: mineView, gemWindows, statue, spotFor };
 
   if (import.meta.env.DEV) void import('./dev/harness.ts').then((m) => m.installHarness(world));
 
@@ -510,7 +541,8 @@ World.create(container, {
   enter.disabled = !navigator.xr;
   enter.addEventListener('click', () => {
     ensureAudio();
-    launchXR(world, { sessionMode: SessionMode.ImmersiveVR });
+    // (hands too: put the controllers down and your bare hands work the map)
+    launchXR(world, { sessionMode: SessionMode.ImmersiveVR, features: { handTracking: true } });
   });
   // Hide the landing card once the session is up; bring it back after.
   // (A timer, not rAF: Quest Browser suspends window rAF while presenting.)

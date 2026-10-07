@@ -8,8 +8,9 @@ A VR adaptation of **How to Fish**, set on **Tidewater's** island
 the **Immersive Web SDK** (IWSDK 0.4.2, three r184 — the same stack as
 [FIRE FIGHT 2](https://github.com/yellkell/ff2)).
 
-Movement is teleport-only, and it is **FIRE FIGHT 2's club teleport**, carried over
-whole.
+**handfish** is the hand-tracking line of the game. You get about the island one way only:
+**the travel map**. Call it up, point at where you want to be, and you're there, standing at the
+pier rail, the roulette table or the tree, already facing it.
 
 **Play:** https://yellkell.github.io/gamblefish/ (Quest Browser → ENTER VR)
 
@@ -17,8 +18,8 @@ whole.
 
 | | |
 |---|---|
-| **Teleport** | Either stick forward to aim. Roll the stick to pick your facing, then release to go. |
-| **Snap turn / step back** | Flick the stick sideways to turn, or back to step back. |
+| **Travel map** | Push either stick **forward** (bare hands: reach up, pinch and pull down) and the map unrolls in front of you. Point at a spot and pull the **trigger** (bare hands: press your fingertip into the paper) to go there. Push forward again, or the ✕, to roll it up. |
+| **Snap turn** | Flick the stick sideways (controllers only: with hands, just turn round). |
 | **Rod out / away** | **B** puts it in your right hand, **Y** in your left. It starts in your right hand. |
 | **Cast** | Hold the **trigger** (your finger on the line), swing the rod and let go. |
 | **Strike** | When the bobber goes under, yank the rod back or pull the trigger. |
@@ -31,6 +32,7 @@ whole.
 npm install
 npm run dev          # bakes the island on first run, then http://localhost:5180
 npm run build        # bake + typecheck + static build in dist/
+npm run check:map        # every travel-map spot, against the baked island
 npm run check:teleport   # and check:backpack, check:casino, check:fish, check:camps,
                          # check:line, check:mining, check:statue, check:bank
 ```
@@ -528,26 +530,44 @@ In `npm run dev`, `window.__harness` drives the emulated Quest:
 - `__harness.snapshot(camPos, lookAt)` renders the live XR scene from a
   spectator camera. The emulator's own XR canvas can't be screenshotted.
 
-## Teleport (ff2 club, exact)
+## The travel map
 
-`src/locomotion/TeleportSystem.ts` is ff2's `src/rave/systems/ClubTeleportSystem.ts`.
-The controls, arc, marker, sound and tuning are identical:
+The only way about the island (`src/locomotion/TravelMap.ts`). The arc teleport and the step back
+are gone; snap turn stays on the sticks for anyone seated.
 
-- **Stick forward** (either hand, past 0.5) opens a ballistic arc from that
-  controller: 7.5 m/s, 9.8 gravity, 48 × 35 ms samples.
-- **Roll the stick** to spin the facing arrow in the octagon marker.
-- **Release** (below 0.35) to go. The head lands on the marker, facing the arrow.
-- **Sideways flick** (0.7 engage, 0.3 re-arm) snap-turns 35° about the head, one
-  snap per flick.
-- **Back flick** steps 0.5 m away from where you're looking, then tries 0.34 and
-  0.2 m. It never throws an arc.
-- **Headset recentre** re-plants you where you stood.
-- **Look and sound:** a Line2 ribbon and ff2's `uiClick` on the same audio bus. The
-  landing marker (`src/locomotion/marker.ts`) is the club's octagon at 0.42×, drawn in
-  light rather than as a grey puck. It has a glowing rim, a tinted fill, two chevrons
-  that ripple toward your facing, a ring that pings out from the rim, and a low curtain
-  of light on its outline. A good landing is sea-glass `#5ee8d8`; a refused one turns
-  hazard `#e8352a` with stripes. It pops in when you start aiming. It costs two draws.
+- **Calling it up.** Either stick forward (0.6, re-armed under 0.3), or with bare hands a pinch
+  above your eyes pulled down 16 cm, like a blind. It unrolls between two turned-wood rollers with
+  brass knobs, 46 cm in front of you and 20 cm below your eyes, and stays world-locked so it holds
+  still while you point. Walk 1.4 m off or turn your back on it and it rolls itself up.
+- **Its sheets** (`src/locomotion/mapSheets.ts`): ISLAND, BAY, VILLAGE and PIER tabs, each the
+  field guide's hand-tinted chart at its own scale (the pier's turned on its side to fill the
+  sheet), and a floor plan of every room with more than one thing in it. Opened indoors, it opens
+  on that room's plan.
+- **Pointing.** A controller's ray, or a bare index fingertip on the paper. The nearest spot
+  snaps (38 px, and the current one holds till another's 8 px nearer). Its name and what's there
+  run along the bottom, a dotted line runs to it from YOU, and the octagon marker
+  (`src/locomotion/marker.ts`) lights up on the island where you'll stand. Anywhere else on dry
+  land is a free point (an X), so the wilds can still be explored and the camps found.
+- **Going.** Trigger, or a fingertip pressed 4 mm into the paper: the map snaps, a blink, and your
+  head lands on the spot facing what it's for. Mid-fight, landing a fish or up the helter skelter
+  it says why not instead.
+
+**The spots** (`src/locomotion/spots.ts`, pure, checked by `npm run check:map`):
+
+- **The pier:** every 4 m down both rails wherever there's water under them, 0.38 m back from
+  the rail and looking straight out; round the pier head's far end, west side, back and open east
+  edge; out on the reef and deep walks once built, and at their build crates until then.
+- **The beach:** every 16 m round the bay, on dry sand above the swash, looking out to sea.
+- **The village:** a step inside every door, and in each room where to stand for each thing in
+  it (roulette, the case wall, blackjack, each slot with its lever at your right hand, the bank,
+  every counter, the Jeweller's two windows, the rod rack, Coral). Outside: the fish market's
+  scale, the timber yard, the east woodlot.
+- **The wilds:** a step from each of the twelve trees; each found camp's chest (every camp once
+  the camp map's yours); each gem rock you've been within 45 m of, once the pickaxe is yours; the
+  helter skelter's gate; the statue.
+
+Every spot is checked against `src/world/surfaces.ts` before it's offered: a floor you may stand
+on, at its height, and nothing solid within 26 cm of your feet.
 
 What had to be new is **where** you may land. The club was a list of flat
 rectangles; the island has terrain and a sea. `src/world/surfaces.ts` answers the
@@ -574,7 +594,7 @@ same questions as ff2's `TELEPORT_AREAS`, `floorYAt` and `crossesWall`:
 | Path | What |
 |---|---|
 | `src/main.ts` | IWSDK boot, load, Enter VR |
-| `src/locomotion/` | ff2 teleport, its tuning, the octagon |
+| `src/locomotion/` | the travel map, its sheets and spots; snap turn and recentre; the octagon |
 | `src/world/` | baked data reader, heightfield, surfaces (pure), terrain, ocean, sky, clouds, hawks, village |
 | `src/audio/` | ff2's synth SFX bus and cash chime; Tidewater's sampled fishing and shore sounds; the music |
 | `src/fishing/` | the rod, cast, bites, fight, landing, catch card, the line meter clipped to the rod |
@@ -587,7 +607,8 @@ same questions as ff2's `TELEPORT_AREAS`, `floorYAt` and `crossesWall`:
 | `tools/bake-world.mjs` | Tidewater → `public/world/` |
 | `tools/bake-props.mjs` | Tidewater's rod, bobber and fish → `public/props/` |
 | `tools/make-icons.mjs` | `public/favicon.svg` → the .ico and PNG icons beside it (run after editing the SVG) |
-| `tools/teleport-check.mjs` | headless teleport rules check, including no landing under a house floor |
+| `tools/map-check.mjs` | headless check of every travel-map spot: on its floor, clear of walls, in reach of what it's for, facing it |
+| `tools/teleport-check.mjs` | headless floor and wall rules check, including no landing under a house floor |
 | `tools/fish-check.mjs` | headless check that the timed fish keep their hours and the trophy fish need their gear |
 | `tools/camps-check.mjs` | headless check that the camps are hidden from the start, level, reachable, and their chests fill properly |
 | `tools/bank-check.mjs` | headless check of the bank server in dev mode: paying credits once, claiming once, pay codes (the page finds the code, pays for the pack picked there, the headset collects), the newer save wins, and wrong LOG IN and pay codes are throttled (`server/guards.mjs`) so nobody can guess into an account |

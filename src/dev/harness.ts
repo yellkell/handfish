@@ -211,7 +211,7 @@ export function installHarness(world: World): void {
     aim,
     until,
     async enter(): Promise<boolean> {
-      if (!world.session) launchXR(world, { sessionMode: SessionMode.ImmersiveVR });
+      if (!world.session) launchXR(world, { sessionMode: SessionMode.ImmersiveVR, features: { handTracking: true } });
       for (let i = 0; i < 50 && !world.session; i++) await sleep(100);
       await sleep(300);
       await introDone(); // the boot intro's six seconds

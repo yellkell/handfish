@@ -453,3 +453,34 @@ export function gemChime(rare = false): void {
     tone({ freq: f * 2.01, type: 'sine', dur: 0.18, gain: 0.02, delay: i * 0.045 });
   });
 }
+
+/* ── the travel map (locomotion/TravelMap.ts) ───────────────────────────── */
+
+/** The map unrolling: a dry papery rush, a couple of crinkles, the rollers' wooden knock. */
+export function mapUnroll(): void {
+  whooshNoise(0.34, 0.16, 5200, 2400);
+  whooshNoise(0.09, 0.07, 7000, 4200, 0.12);
+  whooshNoise(0.07, 0.06, 6400, 3800, 0.22);
+  tone({ freq: 320, to: 210, type: 'triangle', dur: 0.06, gain: 0.08, delay: 0.3 });
+}
+
+/** …and rolling it back up: quicker, with the rollers meeting. */
+export function mapRollUp(): void {
+  whooshNoise(0.2, 0.12, 3000, 5600);
+  tone({ freq: 360, to: 240, type: 'triangle', dur: 0.05, gain: 0.09, delay: 0.17 });
+  clank(1900, 0.02, 0.05, 0.18);
+}
+
+/** Off you go: the map's snap, a soft rising rush, and a low landing thump. */
+export function mapGo(): void {
+  clank(1500, 0.05, 0.04);
+  whooshNoise(0.42, 0.2, 500, 2600);
+  tone({ freq: 220, to: 440, type: 'sine', dur: 0.3, gain: 0.05 });
+  tone({ freq: 95, to: 55, type: 'sine', dur: 0.22, gain: 0.22, delay: 0.3 });
+}
+
+/** A tab of the map turned over: a light page flick. */
+export function mapTab(): void {
+  whooshNoise(0.08, 0.08, 6200, 3600);
+  clank(1700, 0.02, 0.03);
+}
