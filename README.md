@@ -20,6 +20,7 @@ pier rail, the roulette table or the tree, already facing it.
 |---|---|
 | **Travel map** | Push either stick **forward** (bare hands: reach up, pinch and pull down) and the map unrolls in front of you. Point at a spot and pull the **trigger** (bare hands: press your fingertip into the paper) to go there. Push forward again, or the ✕, to roll it up. |
 | **Snap turn** | Flick the stick sideways (controllers only: with hands, just turn round). |
+| **Backpack (hands)** | Turn an open hand palm up in front of you and hold it a moment: the backpack opens (again to shut it). |
 | **Recentre** | **RECENTRE** on the backpack's left, under ALWAYS DAY: back on the spot the map put you on, facing the way it faced you. |
 | **Rod out / away** | **B** puts it in your right hand, **Y** in your left. It starts in your right hand. |
 | **Cast** | Hold the **trigger** (your finger on the line), swing the rod and let go. |

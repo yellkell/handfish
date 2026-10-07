@@ -5,7 +5,7 @@
  *  THE SEQUENCE
  *   1. Catch it: the fish hangs off your rod tip (FishingSystem).
  *   2. Take it: grip it with your free hand — it unhooks and flops in your hand, full size.
- *   3. Press A (or X): the tray comes up in front of you at waist height, tipped toward you, the
+ *   3. Press A (or X), or with a bare hand turn it palm up, flat, in front of you: the tray comes up in front of you at waist height, tipped toward you, the
  *      fish you already carry lying in their slots.
  *   4. Bring the fish over the tray: it shrinks to slot size in your hand and a GHOST fish hovers
  *      in the slot it would drop into — green if it fits, red if it doesn't. Flick the stick to
@@ -80,8 +80,14 @@ import { Stash } from './stash.ts';
 import type { ChartSource, Place } from './chart.ts';
 import { CELL, Tray } from './tray.ts';
 import { introActive } from '../experience/introGate.ts';
+import { palm } from '../input/hands.ts';
 
 type Hand = 'left' | 'right';
+
+/** palm up: how square to the sky the palm faces (its normal's y), how open the hand is (0..1), how long it's held (s) */
+const PALM_UP = 0.72;
+const PALM_OPEN = 0.55;
+const PALM_HOLD = 0.3;
 
 export const TIER_HEX = [0x9aa4ac, 0xdfeaf4, 0xffb000, 0xff5fd2];
 export const TIER_CSS = ['#9aa4ac', '#dfeaf4', '#ffb000', '#ff5fd2'];
@@ -677,6 +683,39 @@ export class BackpackSystem extends createSystem({}) {
     this.paintTabs();
   }
 
+  /** a bare hand turned palm up: how long it's been held so, and whether it's let go since it last opened or shut the tray */
+  private readonly palmHeld: Record<Hand, { t: number; armed: boolean }> = { left: { t: 0, armed: true }, right: { t: 0, armed: true } };
+
+  /**
+   * A bare hand, open and flat, turned palm up in front of you below your eyes, and held there a
+   * moment (PALM_HOLD): the backpack opens (or, open, shuts). Once it's fired, the hand has to turn
+   * away (or close) before it can again, so a palm left up doesn't flick the tray open and shut. A
+   * fist (the rod's) never counts, nor a hand held up by your face.
+   */
+  private palmUp(h: Hand, dt: number): boolean {
+    const st = this.palmHeld[h];
+    const p = palm(this, h);
+    if (!p) {
+      st.t = 0;
+      st.armed = true;
+      return false;
+    }
+    this.camera.getWorldPosition(_v);
+    const up = p.facing.y;
+    const ok = up > PALM_UP && p.open > PALM_OPEN && p.centre.y < _v.y - 0.05 && Math.hypot(p.centre.x - _v.x, p.centre.z - _v.z) < 0.75;
+    if (!ok) {
+      st.t = 0;
+      if (up < PALM_UP - 0.35 || p.open < PALM_OPEN - 0.3) st.armed = true;
+      return false;
+    }
+    if (!st.armed) return false;
+    st.t += dt;
+    if (st.t < PALM_HOLD) return false;
+    st.t = 0;
+    st.armed = false;
+    return true;
+  }
+
   /* ── open / close ────────────────────────────────────────────────────── */
 
   private open(): void {
@@ -736,7 +775,7 @@ export class BackpackSystem extends createSystem({}) {
     if (!backpackDeps.state || introActive()) return;
     for (const h of ['left', 'right'] as const) {
       const pad = this.input.xr.gamepads[h];
-      if (pad?.getButtonDown(h === 'right' ? InputComponent.A_Button : InputComponent.X_Button)) {
+      if (pad?.getButtonDown(h === 'right' ? InputComponent.A_Button : InputComponent.X_Button) || this.palmUp(h, dt)) {
         if (backpackView.open) this.close();
         else if (!backpackDeps.blocked?.()) this.open();
       }

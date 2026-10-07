@@ -27,7 +27,7 @@ import { bendAt, bendPower, BODY_Y, CONV_TAG, CRANK, GUIDE1, REEL_Z, ROD_L, SEAT
 import { isConventional, LINE, REEL_KNOB, REEL_LEVER, REELS, rodPaint, type GearLevels } from './rodLook.ts';
 
 /** The rod rides this far up from the controller's pointing axis (a relaxed wrist). */
-const ROD_TILT = 0.38;
+export const ROD_TILT = 0.38;
 const GEAR = 5.2; // rotor turns per crank turn
 /** a conventional reel's spool turns per crank turn */
 const CONV_GEAR = 4.4;

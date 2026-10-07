@@ -33,7 +33,7 @@
  */
 
 import { createSystem, InputComponent } from '@iwsdk/core';
-import { Mesh, Quaternion, Vector2, Vector3, type Object3D } from 'three';
+import { Group, Mesh, Quaternion, Vector2, Vector3, type Object3D } from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
@@ -45,6 +45,7 @@ import { backpackView } from '../backpack/BackpackSystem.ts';
 import { pointerView } from '../ui/pointer.ts';
 import { fill, GRID_SIZES, type Piece } from '../backpack/logic.ts';
 import { pulseHand } from '../input/haptics.ts';
+import { rodFrame, trackedHand } from '../input/hands.ts';
 import { locomotion } from '../locomotion/TeleportSystem.ts';
 import { INK } from '../ui/panel.ts';
 import type { WristWallet } from '../ui/wallet.ts';
@@ -59,7 +60,7 @@ import { FishFight } from './fight.ts';
 import { CatchCard, Toast } from './hud.ts';
 import { CLAMP_Y, RodGauge } from './rodGauge.ts';
 import { swim, type FishUniforms, type Props } from './props.ts';
-import { LINE_PER_CRANK, Rod } from './rod.ts';
+import { LINE_PER_CRANK, ROD_TILT, Rod } from './rod.ts';
 import { LINE } from './rodLook.ts';
 import { SHARK_HANG, SHARK_ID, SharkFight, sharkUnlocked } from './shark.ts';
 import { GRIP_Y, SharkShow } from './sharkShow.ts';
@@ -334,6 +335,35 @@ export class FishingSystem extends createSystem({}) {
   }
   private grip(h: Hand): Object3D {
     return this.player.gripSpaces[h];
+  }
+
+  /** a bare hand's rod frame (input/hands.ts rodFrame), smoothed a touch: where the fist holds the rod */
+  private readonly fistGrip = new Group();
+  private readonly fistRay = new Group();
+  private readonly fistRaw = { grip: new Group(), ray: new Group() };
+  private fistOn = false;
+
+  /**
+   * What the rod's posed on: a controller's grip and ray, or, with a bare hand, the fist itself
+   * (the hand's own ray runs from your shoulder through your hand, and has nothing to do with how
+   * your fist is turned: a rod on it pointed wherever that line did).
+   */
+  private rodHands(dt: number): { grip: Object3D; ray: Object3D } {
+    const h = this.hand;
+    if (!trackedHand(this, h) || !rodFrame(this, h, ROD_TILT, this.fistRaw.grip, this.fistRaw.ray)) {
+      this.fistOn = false;
+      return { grip: this.grip(h), ray: this.player.raySpaces[h] };
+    }
+    // a little smoothing on the tracked joints' jitter (fast enough not to dull a cast)
+    const k = this.fistOn ? 1 - Math.exp(-dt * 30) : 1;
+    this.fistOn = true;
+    this.fistGrip.position.lerp(this.fistRaw.grip.position, k);
+    this.fistRay.position.copy(this.fistGrip.position);
+    this.fistRay.quaternion.slerp(this.fistRaw.ray.quaternion, k);
+    this.fistGrip.quaternion.copy(this.fistRay.quaternion);
+    this.fistGrip.updateMatrixWorld(true);
+    this.fistRay.updateMatrixWorld(true);
+    return { grip: this.fistGrip, ray: this.fistRay };
   }
 
   private setState(s: RodState): void {
@@ -1219,7 +1249,8 @@ export class FishingSystem extends createSystem({}) {
     }
     const bailOpen = this.state === 'windup' || this.state === 'flying';
     this.rod.lineFill = 1 - Math.min(1, this.lineOut / 220) * 0.5;
-    this.rod.update(dt, time, this.grip(this.hand), this.player.raySpaces[this.hand], { bendT, loadT, towards, bailOpen, rig: this.player });
+    const held = this.rodHands(dt);
+    this.rod.update(dt, time, held.grip, held.ray, { bendT, loadT, towards, bailOpen, rig: this.player });
     // the cast running line off the spool
     if (this.state === 'flying') this.rod.payOut(this.lineOut - this.castOut, dt, true);
     this.castOut = this.lineOut;

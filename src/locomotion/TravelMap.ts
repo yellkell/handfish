@@ -47,6 +47,7 @@ import { flame } from '../backpack/chart.ts';
 import { mapGo, mapRollUp, mapTab, mapUnroll, uiDeny, uiHover } from '../audio/sfx.ts';
 import { introActive } from '../experience/introGate.ts';
 import { pulseHand } from '../input/haptics.ts';
+import { joint, trackedHand } from '../input/hands.ts';
 import { font, onFontsReady } from '../ui/fonts.ts';
 import { InteractivePanel, pointerView, register } from '../ui/pointer.ts';
 import { turned } from '../village/craft.ts';
@@ -510,22 +511,12 @@ export class TravelMap extends createSystem({}) {
 
   /** Is this hand a tracked hand (not a controller)? */
   private isHand(h: Hand): XRInputSource | null {
-    const src = this.input.xr.getPrimaryInputSource(h);
-    return src?.hand ? src : null;
+    return trackedHand(this, h);
   }
 
   /** A tracked hand's joint, in the world. */
   private joint(h: Hand, name: XRHandJoint, out: Vector3): Vector3 | null {
-    const src = this.isHand(h);
-    const frame = this.renderer.xr.getFrame();
-    const ref = this.renderer.xr.getReferenceSpace();
-    const space = src?.hand?.get(name);
-    if (!frame || !ref || !space || !frame.getJointPose) return null;
-    const pose = frame.getJointPose(space, ref);
-    if (!pose) return null;
-    const p = pose.transform.position;
-    this.player.updateMatrixWorld();
-    return out.set(p.x, p.y, p.z).applyMatrix4(this.player.matrixWorld);
+    return joint(this, h, name, out);
   }
 
   /** Bare hands: pinch above your eyes and pull down, and the map comes down with your hand. */
