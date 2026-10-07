@@ -6,6 +6,11 @@
  * visible panels; the nearest hit gets a cursor and a beam, the button under it lights, and a
  * trigger pull clicks it — with ff2's hover and click sounds and a tick in the hand.
  *
+ * Bare hands can POKE them too: an index fingertip that comes at a panel's face from the front and
+ * pushes a few millimetres through clicks the button under it, once per push (the backpack's tabs
+ * and switches, the field guide's pages, any board in reach). A fingertip on a panel takes the place
+ * of that hand's ray there.
+ *
  * A hand whose ray is on a button CLAIMS its trigger for that frame (`pointerView.claimed`), so
  * pointing at a shop never also casts the rod or drops a fish. A click keeps the claim until the
  * trigger's let go: a button that goes away under it (SELL ALL, with nothing left to sell) mustn't
@@ -18,6 +23,7 @@ import { uiClick, uiHover } from '../audio/sfx.ts';
 import { pulseHand } from '../input/haptics.ts';
 import { Panel } from './panel.ts';
 import { introActive } from '../experience/introGate.ts';
+import { hands } from '../input/hands.ts';
 
 type Hand = 'left' | 'right';
 
@@ -40,6 +46,8 @@ export class InteractivePanel extends Panel {
   readonly size: [number, number];
   readonly px: [number, number];
   onClick: (id: string, hand: Hand) => void = () => {};
+  /** a fingertip may press it (the travel map reads fingertips itself, so it says no) */
+  pokeable = true;
   /** repaint hook, called whenever the hover changes (and by owners when state changes) */
   paint: () => void = () => {};
 
@@ -64,6 +72,11 @@ export class InteractivePanel extends Panel {
 }
 
 const panels = new Set<InteractivePanel>();
+/** a fingertip: on a panel within this in front of its face (m), pressed this far through, let go this far back out */
+const POKE_NEAR = 0.035;
+const POKE_PRESS = 0.006;
+const POKE_REARM = 0.015;
+
 /** frames a new hover holds before its board repaints */
 const HOVER_HOLD = 3;
 /** how far past a hovered button's edge (canvas pixels) it stays hovered */
@@ -96,6 +109,9 @@ export class PointerSystem extends createSystem({}) {
   private readonly clicking: Record<Hand, boolean> = { left: false, right: false };
   private readonly ray = new Ray();
   private readonly plane = new Plane();
+  /** a poking fingertip: came at the face from the front, and hasn't pressed since it last pulled back */
+  private readonly pokeFront: Record<Hand, boolean> = { left: false, right: false };
+  private readonly pokeArmed: Record<Hand, boolean> = { left: true, right: true };
 
   init(): void {
     const mk = (): { dot: Mesh; beam: Line } => {
@@ -131,6 +147,9 @@ export class PointerSystem extends createSystem({}) {
       if (t > 0.6) this.trig[hand] = true;
       else if (t < 0.3) this.trig[hand] = this.clicking[hand] = false;
       pointerView.claimed[hand] = this.clicking[hand];
+
+      // a bare fingertip on a panel's face: that's what this hand's on (not its ray)
+      if (this.poke(hand, cur, hovered)) continue;
 
       // nearest visible panel along this hand's ray
       const rs = this.player.raySpaces[hand];
@@ -201,6 +220,59 @@ export class PointerSystem extends createSystem({}) {
       p.hover = h;
       p.paint();
     }
+  }
+
+  /**
+   * A bare index fingertip on (or just in front of) a panel's face: it's what this hand's on. The
+   * button under it lights; pushed through from the front, it clicks, once, till the finger pulls
+   * back out. True if a fingertip's on a panel (the ray's left alone then).
+   */
+  private poke(hand: Hand, cur: { dot: Mesh; beam: Line }, hovered: Map<InteractivePanel, string | null>): boolean {
+    const f = hands[hand];
+    if (!f.fresh) {
+      this.pokeFront[hand] = false;
+      this.pokeArmed[hand] = true;
+      return false;
+    }
+    let best: { p: InteractivePanel; x: number; y: number; depth: number } | null = null;
+    for (const p of panels) {
+      if (!p.pokeable || !visible(p.mesh)) continue;
+      p.mesh.updateMatrixWorld();
+      _n.set(0, 0, 1).transformDirection(p.mesh.matrixWorld);
+      p.mesh.getWorldPosition(_hit);
+      const depth = _d.copy(f.indexTip).sub(_hit).dot(_n);
+      if (depth > POKE_NEAR || depth < -0.04 || (best && Math.abs(depth) > Math.abs(best.depth))) continue;
+      const local = p.mesh.worldToLocal(_o.copy(f.indexTip));
+      const u = local.x / p.size[0] + 0.5;
+      const v = 0.5 - local.y / p.size[1];
+      if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+      best = { p, x: u * p.px[0], y: v * p.px[1], depth };
+      _best.copy(f.indexTip).addScaledVector(_n, -depth);
+    }
+    if (!best) {
+      this.pokeFront[hand] = false;
+      this.pokeArmed[hand] = true;
+      return false;
+    }
+    pointerView.over[hand] = best.p;
+    cur.beam.visible = false;
+    cur.dot.visible = true;
+    cur.dot.position.copy(_best);
+    if (best.depth > POKE_REARM) this.pokeArmed[hand] = true;
+    if (best.depth > 0) this.pokeFront[hand] = true;
+    const b = best.p.near(best.p.hover, best.x, best.y, HOVER_MARGIN) ?? best.p.at(best.x, best.y);
+    if (!b) {
+      if (!hovered.has(best.p)) hovered.set(best.p, null);
+      return true;
+    }
+    pointerView.claimed[hand] = true;
+    hovered.set(best.p, b.id);
+    if (this.pokeArmed[hand] && this.pokeFront[hand] && best.depth < -POKE_PRESS) {
+      this.pokeArmed[hand] = false;
+      uiClick();
+      best.p.onClick(b.id, hand);
+    }
+    return true;
   }
 }
 

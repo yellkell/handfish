@@ -1167,11 +1167,11 @@ export class FishingSystem extends createSystem({}) {
     this.landing = null;
     this.card.hide();
     if (this.state === 'landing') this.reelInNow();
-    // off the hook and into your free hand; A brings up the backpack to put it away
+    // off the hook and into your free hand, and the backpack opens to put it away in
     if (this.caughtId !== null) {
       const id = this.caughtId;
       this.caughtId = null;
-      backpackView.takeInHand?.(id, into ?? this.other(this.hand));
+      backpackView.takeInHand?.(id, into ?? this.other(this.hand), true);
     }
   }
 

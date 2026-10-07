@@ -222,6 +222,8 @@ export class TravelMap extends createSystem({}) {
     // the paper: the map's face (a pointer panel), and its plain back
     this.panel = new InteractivePanel(MAP_PX, MAP_M);
     this.panel.buttons = [{ id: 'map', x: 0, y: 0, w: MAP_PX[0], h: MAP_PX[1] }];
+    // (a fingertip on the paper is read here, not by the pointer system: see pokeAt)
+    this.panel.pokeable = false;
     this.panel.paint = () => {};
     this.panel.onClick = (_id, hand) => this.select(hand);
     const mat = this.panel.mesh.material as MeshBasicMaterial;

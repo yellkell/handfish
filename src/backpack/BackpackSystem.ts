@@ -129,7 +129,8 @@ export const backpackView: {
   /** drop targets around the world (they add and remove themselves) */
   targets: Set<DropTarget>;
   /** a caught fish goes into `hand` (its save entry id) */
-  takeInHand?: (id: number, hand: Hand) => void;
+  /** a fish into your hand; `open`: and the backpack opens for it (a catch) */
+  takeInHand?: (id: number, hand: Hand, open?: boolean) => void;
   toggle?: () => void;
   system?: BackpackSystem;
 } = { open: false, holding: false, hand: null, heavy: false, targets: new Set() };
@@ -356,7 +357,12 @@ export class BackpackSystem extends createSystem({}) {
     this.guide = new FieldGuide(backpackDeps.state!, backpackDeps.props!, this.renderer, backpackDeps.chart, backpackDeps.where, backpackDeps.walks, travel ? go : null, backpackDeps.skelter ?? null);
     this.guide.group.position.y = 0.03;
     this.tray.group.add(this.guide.group);
-    backpackView.takeInHand = (id, hand) => this.takeInHand(id, hand);
+    backpackView.takeInHand = (id, hand, open) => {
+      this.takeInHand(id, hand);
+      // a catch: the backpack opens with it in your hand, ready to drop it in (not the great
+      // white, which doesn't go in; nor up the helter skelter)
+      if (open && this.held?.piece.id === id && this.held.piece.species !== SHARK_ID && !backpackView.open && !backpackDeps.blocked?.()) this.open();
+    };
     backpackView.toggle = () => (backpackView.open ? this.close() : this.open());
     backpackView.system = this;
     this.adoptOld();
